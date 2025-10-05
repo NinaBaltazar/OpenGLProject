@@ -20,7 +20,7 @@ float lastY =  600.0f / 2.0f;
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
-// --- Protótipos de Funções ---
+// --- Protótipos ---
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void processInput(GLFWwindow *window);
@@ -38,7 +38,7 @@ int main(void)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    GLFWwindow* window = glfwCreateWindow(800, 600, "Sistema Solar v0.8 - Eixos Fixos & Orbita Correta", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(800, 600, "Sistema Solar v0.9 - Hemisferios Corrigidos", NULL, NULL);
     if (!window) { glfwTerminate(); return -1; }
     glfwMakeContextCurrent(window);
     
@@ -49,15 +49,13 @@ int main(void)
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) { return -1; }
     glEnable(GL_DEPTH_TEST);
 
-    // --- Compilando Shaders de arquivos ---
+    // --- Shaders ---
     unsigned int objectShaderProgram = createShaderProgram("object_vertex.glsl", "object_fragment.glsl");
     unsigned int lightShaderProgram  = createShaderProgram("light_vertex.glsl",  "light_fragment.glsl");
 
-    // --- Geração da esfera e buffers ---
-    float* vertices;
-    unsigned int vertexCount;
-    unsigned int* indices;
-    unsigned int indexCount;
+    // --- Geometria ---
+    float* vertices; unsigned int vertexCount;
+    unsigned int* indices; unsigned int indexCount;
     generateSphere(1.0f, 36, 18, &vertices, &vertexCount, &indices, &indexCount);
 
     unsigned int VBO, EBO, sphereVAO;
@@ -81,11 +79,11 @@ int main(void)
     free(vertices);
     free(indices);
 
-    // --- Carregando Texturas ---
+    // --- Texturas ---
     unsigned int earthTexture, sunTexture;
     int width, height, nrChannels;
-    stbi_set_flip_vertically_on_load(1);
-    
+    stbi_set_flip_vertically_on_load(1); // mantido como estava
+
     glGenTextures(1, &earthTexture);
     glBindTexture(GL_TEXTURE_2D, earthTexture); 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	
@@ -112,7 +110,7 @@ int main(void)
     } else { printf("Falha ao carregar textura do Sol\n"); }
     stbi_image_free(data);
     
-    // --- LOOP DE RENDERIZAÇÃO ---
+    // --- LOOP ---
     while (!glfwWindowShouldClose(window))
     {
         float currentFrame = (float)glfwGetTime();
@@ -126,23 +124,20 @@ int main(void)
 
         mat4 projection, view;
         glm_perspective(glm_rad(45.0f), 800.0f / 600.0f, 0.1f, 100.0f, projection);
-        vec3 center;
-        glm_vec3_add(cameraPos, cameraFront, center);
+        vec3 center; glm_vec3_add(cameraPos, cameraFront, center);
         glm_lookat(cameraPos, center, cameraUp, view);
 
         vec3 lightPos = {0.0f, 0.0f, 0.0f};
 
-        // --- 1. DESENHAR O SOL ---
+        // --- SOL ---
         glUseProgram(lightShaderProgram);
-        
         glUniformMatrix4fv(glGetUniformLocation(lightShaderProgram, "projection"), 1, GL_FALSE, (float*)projection);
         glUniformMatrix4fv(glGetUniformLocation(lightShaderProgram, "view"), 1, GL_FALSE, (float*)view);
-        
+
         mat4 model;
         glm_mat4_identity(model);
         glm_translate(model, lightPos);
-        // Levantar polos se necessário para sua textura do Sol:
-        glm_rotate(model, glm_rad(-90.0f), (vec3){1.0f, 0.0f, 0.0f});
+        glm_rotate(model, glm_rad(-90.0f), (vec3){1.0f, 0.0f, 0.0f}); // pode trocar pra +90 se sua textura exigir
         glm_scale(model, (vec3){0.5f, 0.5f, 0.5f});
         glUniformMatrix4fv(glGetUniformLocation(lightShaderProgram, "model"), 1, GL_FALSE, (float*)model);
 
@@ -153,9 +148,8 @@ int main(void)
         glBindVertexArray(sphereVAO);
         glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
 
-        // --- 2. DESENHAR A TERRA ---
+        // --- TERRA ---
         glUseProgram(objectShaderProgram);
-        
         glUniformMatrix4fv(glGetUniformLocation(objectShaderProgram, "projection"), 1, GL_FALSE, (float*)projection);
         glUniformMatrix4fv(glGetUniformLocation(objectShaderProgram, "view"), 1, GL_FALSE, (float*)view);
         glUniform3fv(glGetUniformLocation(objectShaderProgram, "lightPos"), 1, (float*)lightPos);
@@ -163,38 +157,31 @@ int main(void)
         
         float t = (float)glfwGetTime();
 
-        // -------- ORBITA (em torno da origem, no plano XZ) --------
-        mat4 orbit;
-        glm_mat4_identity(orbit);
-        float orbitalSpeed = glm_rad(20.0f); // deg/s -> rad/s
-        float orbitalAngle = t * orbitalSpeed;
+        // órbita
+        mat4 orbit; glm_mat4_identity(orbit);
+        float orbitalAngle = t * glm_rad(20.0f);
         vec3 orbitPos = { cosf(orbitalAngle) * 2.5f, 0.0f, sinf(orbitalAngle) * 2.5f };
         glm_translate(orbit, orbitPos);
-        // Se quiser inclinar o plano orbital: glm_rotate(orbit, glm_rad(7.155f), (vec3){1,0,0});
 
-        // -------- ROTACOES LOCAIS (polos no eixo Y do mundo) --------
-        mat4 local;
-        glm_mat4_identity(local);
+        // local
+        mat4 local; glm_mat4_identity(local);
 
-        // 1) Lift: polos passam a alinhar com Y do mundo
-        glm_rotate(local, glm_rad(-90.0f), (vec3){1.0f, 0.0f, 0.0f});
+        // (A) LIFT: ***+90° em X*** para corrigir hemisfério
+        glm_rotate(local, glm_rad(+90.0f), (vec3){1.0f, 0.0f, 0.0f});
 
-        // 2) Spin diário: após o lift, gire em Z (equivale a girar em Y do mundo)
-        float axialSpeed = glm_rad(80.0f);       // inverta o sinal se o sentido estiver invertido
+        // (B) SPIN: em Z, mas com velocidade NEGATIVA para manter sentido leste->oeste
+        float axialSpeed = -glm_rad(80.0f); // <--- sinal negativo após lift +90
         float axialAngle = t * axialSpeed;
         glm_rotate(local, axialAngle, (vec3){0.0f, 0.0f, 1.0f});
 
-        // (Opcional) Obliquidade: inserir entre o lift e o spin se desejar
+        // (opcional) inclinação axial real (desligado a seu pedido)
         // glm_rotate(local, glm_rad(23.44f), (vec3){0.0f, 0.0f, 1.0f});
 
-        // 3) Escala LOCAL (não altera o raio da órbita)
         glm_scale(local, (vec3){0.25f, 0.25f, 0.25f});
 
-        // -------- COMBINA ORBITA E LOCAL --------
-        glm_mul(orbit, local, model); // model = orbit * local
-
+        glm_mul(orbit, local, model);
         glUniformMatrix4fv(glGetUniformLocation(objectShaderProgram, "model"), 1, GL_FALSE, (float*)model);
-        
+
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, earthTexture);
         glUniform1i(glGetUniformLocation(objectShaderProgram, "ourTexture"), 0);
@@ -205,8 +192,8 @@ int main(void)
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
-    
-    // --- LIMPEZA ---
+
+    // limpeza
     glDeleteVertexArrays(1, &sphereVAO);
     glDeleteBuffers(1, &VBO);
     glDeleteBuffers(1, &EBO);
@@ -218,51 +205,25 @@ int main(void)
     return 0;
 }
 
-// --- Funções Auxiliares (Cole estas DEPOIS da função main) ---
-void processInput(GLFWwindow *window)
-{
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, 1);
+// --- Auxiliares ---
+void processInput(GLFWwindow *window){
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) glfwSetWindowShouldClose(window, 1);
     float cameraSpeed = 2.5f * deltaTime;
-    vec3 velocity;
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-        glm_vec3_scale(cameraFront, cameraSpeed, velocity);
-        glm_vec3_add(cameraPos, velocity, cameraPos);
-    } 
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-        glm_vec3_scale(cameraFront, cameraSpeed, velocity);
-        glm_vec3_sub(cameraPos, velocity, cameraPos);
-    } 
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-        glm_vec3_cross(cameraFront, cameraUp, velocity);
-        glm_vec3_normalize(velocity);
-        glm_vec3_scale(velocity, cameraSpeed, velocity);
-        glm_vec3_sub(cameraPos, velocity, cameraPos);
-    } 
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-        glm_vec3_cross(cameraFront, cameraUp, velocity);
-        glm_vec3_normalize(velocity);
-        glm_vec3_scale(velocity, cameraSpeed, velocity);
-        glm_vec3_add(cameraPos, velocity, cameraPos);
-    }
+    vec3 v;
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS){ glm_vec3_scale(cameraFront, cameraSpeed, v); glm_vec3_add(cameraPos, v, cameraPos); }
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS){ glm_vec3_scale(cameraFront, cameraSpeed, v); glm_vec3_sub(cameraPos, v, cameraPos); }
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS){ glm_vec3_cross(cameraFront, cameraUp, v); glm_vec3_normalize(v); glm_vec3_scale(v, cameraSpeed, v); glm_vec3_sub(cameraPos, v, cameraPos); }
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS){ glm_vec3_cross(cameraFront, cameraUp, v); glm_vec3_normalize(v); glm_vec3_scale(v, cameraSpeed, v); glm_vec3_add(cameraPos, v, cameraPos); }
 }
 
-void mouse_callback(GLFWwindow* window, double xpos, double ypos)
-{
-    if (firstMouse) {
-        lastX = (float)xpos;
-        lastY = (float)ypos;
-        firstMouse = 0;
-    }
+void mouse_callback(GLFWwindow* window, double xpos, double ypos){
+    if (firstMouse){ lastX = (float)xpos; lastY = (float)ypos; firstMouse = 0; }
     float xoffset = (float)xpos - lastX;
     float yoffset = lastY - (float)ypos;
-    lastX = (float)xpos;
-    lastY = (float)ypos;
+    lastX = (float)xpos; lastY = (float)ypos;
     float sensitivity = 0.1f;
-    xoffset *= sensitivity;
-    yoffset *= sensitivity;
-    yaw += xoffset;
-    pitch += yoffset;
+    xoffset *= sensitivity; yoffset *= sensitivity;
+    yaw += xoffset; pitch += yoffset;
     if (pitch > 89.0f) pitch = 89.0f;
     if (pitch < -89.0f) pitch = -89.0f;
     vec3 front;
@@ -272,83 +233,62 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos)
     glm_normalize_to(front, cameraFront);
 }
 
-void framebuffer_size_callback(GLFWwindow* window, int width, int height) { 
-    glViewport(0, 0, width, height); 
-}
+void framebuffer_size_callback(GLFWwindow* window, int width, int height){ glViewport(0, 0, width, height); }
 
-char* loadShaderSource(const char* filePath) {
+char* loadShaderSource(const char* filePath){
     FILE* file = fopen(filePath, "rb");
-    if (!file) {
-        printf("Falha ao abrir o arquivo do shader: %s\n", filePath);
-        return NULL;
-    }
-    fseek(file, 0, SEEK_END);
-    long length = ftell(file);
-    fseek(file, 0, SEEK_SET);
+    if (!file){ printf("Falha ao abrir o arquivo do shader: %s\n", filePath); return NULL; }
+    fseek(file, 0, SEEK_END); long length = ftell(file); fseek(file, 0, SEEK_SET);
     char* buffer = (char*)malloc(length + 1);
-    fread(buffer, 1, length, file);
-    fclose(file);
-    buffer[length] = '\0';
-    return buffer;
+    fread(buffer, 1, length, file); fclose(file);
+    buffer[length] = '\0'; return buffer;
 }
 
-unsigned int createShaderProgram(const char* vertexPath, const char* fragmentPath) {
+unsigned int createShaderProgram(const char* vertexPath, const char* fragmentPath){
     char* vertexSource = loadShaderSource(vertexPath);
     char* fragmentSource = loadShaderSource(fragmentPath);
-
-    unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShader, 1, (const char * const*)&vertexSource, NULL);
-    glCompileShader(vertexShader);
-
-    unsigned int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, (const char * const*)&fragmentSource, NULL);
-    glCompileShader(fragmentShader);
-    
-    unsigned int shaderProgram = glCreateProgram();
-    glAttachShader(shaderProgram, vertexShader);
-    glAttachShader(shaderProgram, fragmentShader);
-    glLinkProgram(shaderProgram);
-    
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
-    free(vertexSource);
-    free(fragmentSource);
-
-    return shaderProgram;
+    unsigned int vs = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vs, 1, (const char * const*)&vertexSource, NULL);
+    glCompileShader(vs);
+    unsigned int fs = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fs, 1, (const char * const*)&fragmentSource, NULL);
+    glCompileShader(fs);
+    unsigned int prog = glCreateProgram();
+    glAttachShader(prog, vs); glAttachShader(prog, fs); glLinkProgram(prog);
+    glDeleteShader(vs); glDeleteShader(fs);
+    free(vertexSource); free(fragmentSource);
+    return prog;
 }
 
 void generateSphere(float radius, int sectorCount, int stackCount, 
                     float** vertices, unsigned int* vertexCount, 
-                    unsigned int** indices, unsigned int* indexCount) {
+                    unsigned int** indices, unsigned int* indexCount){
     *vertexCount = (sectorCount + 1) * (stackCount + 1);
     float* sphereVertices = (float*)malloc(*vertexCount * 8 * sizeof(float));
-    float x, y, z, xy, nx, ny, nz, s, t;
     float lengthInv = 1.0f / radius;
     float sectorStep = 2.0f * (float)M_PI / sectorCount;
     float stackStep  = (float)M_PI / stackCount;
-    float sectorAngle, stackAngle;
     int vertexIndex = 0;
     for (int i = 0; i <= stackCount; ++i) {
-        stackAngle = (float)M_PI / 2.0f - i * stackStep;
-        xy = radius * cosf(stackAngle);
-        z  = radius * sinf(stackAngle);
+        float stackAngle = (float)M_PI / 2.0f - i * stackStep; // i=0 -> norte
+        float xy = radius * cosf(stackAngle);
+        float z  = radius * sinf(stackAngle);
         for (int j = 0; j <= sectorCount; ++j) {
-            sectorAngle = j * sectorStep;
-            x = xy * cosf(sectorAngle);
-            y = xy * sinf(sectorAngle);
+            float sectorAngle = j * sectorStep;
+            float x = xy * cosf(sectorAngle);
+            float y = xy * sinf(sectorAngle);
             // pos
-            sphereVertices[vertexIndex++] = x; 
-            sphereVertices[vertexIndex++] = y; 
+            sphereVertices[vertexIndex++] = x;
+            sphereVertices[vertexIndex++] = y;
             sphereVertices[vertexIndex++] = z;
             // normal
-            nx = x * lengthInv; ny = y * lengthInv; nz = z * lengthInv;
-            sphereVertices[vertexIndex++] = nx; 
-            sphereVertices[vertexIndex++] = ny; 
-            sphereVertices[vertexIndex++] = nz;
-            // uv
-            s = (float)j / sectorCount; 
-            t = (float)i / stackCount;
-            sphereVertices[vertexIndex++] = s; 
+            sphereVertices[vertexIndex++] = x * lengthInv;
+            sphereVertices[vertexIndex++] = y * lengthInv;
+            sphereVertices[vertexIndex++] = z * lengthInv;
+            // uv (mantidos)
+            float s = (float)j / sectorCount;
+            float t = (float)i / stackCount;   // i=0 (norte) -> t=0 ; STB já está flipando a imagem
+            sphereVertices[vertexIndex++] = s;
             sphereVertices[vertexIndex++] = t;
         }
     }
@@ -357,10 +297,9 @@ void generateSphere(float radius, int sectorCount, int stackCount,
     *indexCount = stackCount * sectorCount * 6;
     unsigned int* sphereIndices = (unsigned int*)malloc(*indexCount * sizeof(unsigned int));
     int index = 0;
-    int k1, k2;
     for (int i = 0; i < stackCount; ++i) {
-        k1 = i * (sectorCount + 1);
-        k2 = k1 + sectorCount + 1;
+        int k1 = i * (sectorCount + 1);
+        int k2 = k1 + sectorCount + 1;
         for (int j = 0; j < sectorCount; ++j, ++k1, ++k2) {
             if (i != 0) {
                 sphereIndices[index++] = k1; 
