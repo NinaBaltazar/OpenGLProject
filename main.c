@@ -1,5 +1,3 @@
-// 🔭 Passeio 3D pelo Sistema Solar v1.5 (Planetas + Anéis, sem trajetórias)
-
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <cglm/cglm.h>
@@ -14,24 +12,35 @@
 vec3 cameraPos   = {0.0f, 0.0f,  8.0f};
 vec3 cameraFront = {0.0f, 0.0f, -1.0f};
 vec3 cameraUp    = {0.0f, 1.0f,  0.0f};
-int firstMouse = 1;
+
+int   firstMouse = 1;
 float yaw   = -90.0f;
-float pitch =  0.0f;
+float pitch =   0.0f;
 float lastX =  800.0f / 2.0f;
 float lastY =  600.0f / 2.0f;
+
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
+
+// Novo: controle de janela/FOV/scroll/toggle de captura
+int   winW = 1280, winH = 720;   // tamanho inicial
+float fovDeg = 45.0f;            // FOV atual (zoom)
+int   mouseCaptured = 1;         // 1=captura ativa
+int   togglePressed = 0;         // antirrepique da tecla C
 
 // --- Protótipos ---
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow *window);
+
 void generateSphere(float radius, int sectorCount, int stackCount, 
                     float** vertices, unsigned int* vertexCount, 
                     unsigned int** indices, unsigned int* indexCount);
 void generateRing(float innerR, float outerR, int segments,
                   float** vertices, unsigned int* vertexCount,
                   unsigned int** indices, unsigned int* indexCount);
+
 char* loadShaderSource(const char* filePath);
 unsigned int createShaderProgram(const char* vertexPath, const char* fragmentPath);
 GLuint loadTexture2D(const char* path);
@@ -111,13 +120,15 @@ int main(void)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    GLFWwindow* window = glfwCreateWindow(800, 600, "Sistema Solar v1.5 (Sem Linhas de Órbita)", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(winW, winH, "Sistema Solar v1.6 (Zoom + Resize + Toggle Mouse)", NULL, NULL);
     if (!window) { glfwTerminate(); return -1; }
     glfwMakeContextCurrent(window);
     
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwSetCursorPosCallback(window, mouse_callback);
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwSetScrollCallback(window, scroll_callback);                 // <- zoom no scroll
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);    // começa capturado
+    mouseCaptured = 1;
 
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) { return -1; }
     glEnable(GL_DEPTH_TEST);
@@ -212,7 +223,7 @@ int main(void)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         mat4 projection, view;
-        glm_perspective(glm_rad(45.0f), 800.0f / 600.0f, 0.1f, 200.0f, projection);
+        glm_perspective(glm_rad(fovDeg), (float)winW / (float)winH, 0.1f, 200.0f, projection);
         vec3 center; glm_vec3_add(cameraPos, cameraFront, center);
         glm_lookat(cameraPos, center, cameraUp, view);
 
@@ -280,7 +291,7 @@ int main(void)
         glfwPollEvents();
     }
 
-    // --- Limpeza mínima (opcional: limpe buffers/VAOs/texturas se quiser) ---
+    // Encerramento simples (OpenGL será limpo pelo SO; adicione glDelete* se desejar)
     glfwTerminate();
     return 0;
 }
@@ -288,24 +299,45 @@ int main(void)
 // --- Auxiliares ---
 void processInput(GLFWwindow *window){
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) glfwSetWindowShouldClose(window, 1);
+
     float cameraSpeed = 6.0f * deltaTime;
     vec3 v;
+
+    // WASD movimenta a câmera
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS){ glm_vec3_scale(cameraFront, cameraSpeed, v); glm_vec3_add(cameraPos, v, cameraPos); }
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS){ glm_vec3_scale(cameraFront, cameraSpeed, v); glm_vec3_sub(cameraPos, v, cameraPos); }
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS){ glm_vec3_cross(cameraFront, cameraUp, v); glm_vec3_normalize(v); glm_vec3_scale(v, cameraSpeed, v); glm_vec3_sub(cameraPos, v, cameraPos); }
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS){ glm_vec3_cross(cameraFront, cameraUp, v); glm_vec3_normalize(v); glm_vec3_scale(v, cameraSpeed, v); glm_vec3_add(cameraPos, v, cameraPos); }
+
+    // Toggle captura do mouse (tecla C)
+    if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS) {
+        if (!togglePressed) {
+            mouseCaptured = !mouseCaptured;
+            glfwSetInputMode(window, GLFW_CURSOR, mouseCaptured ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+            togglePressed = 1;
+        }
+    } else {
+        togglePressed = 0;
+    }
 }
 
 void mouse_callback(GLFWwindow* window, double xpos, double ypos){
+    if (!mouseCaptured) return;   // não atualiza câmera com o mouse livre (útil para redimensionar)
     if (firstMouse){ lastX = (float)xpos; lastY = (float)ypos; firstMouse = 0; }
+
     float xoffset = (float)xpos - lastX;
     float yoffset = lastY - (float)ypos;
     lastX = (float)xpos; lastY = (float)ypos;
+
     float sensitivity = 0.1f;
-    xoffset *= sensitivity; yoffset *= sensitivity;
-    yaw += xoffset; pitch += yoffset;
-    if (pitch > 89.0f) pitch = 89.0f;
+    xoffset *= sensitivity; 
+    yoffset *= sensitivity;
+
+    yaw   += xoffset;
+    pitch += yoffset;
+    if (pitch > 89.0f)  pitch = 89.0f;
     if (pitch < -89.0f) pitch = -89.0f;
+
     vec3 front;
     front[0] = cosf(glm_rad(yaw)) * cosf(glm_rad(pitch));
     front[1] = sinf(glm_rad(pitch));
@@ -313,7 +345,19 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos){
     glm_normalize_to(front, cameraFront);
 }
 
-void framebuffer_size_callback(GLFWwindow* window, int width, int height){ glViewport(0, 0, width, height); }
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset){
+    // rolando para cima diminui FOV (aproxima), para baixo aumenta (afasta)
+    fovDeg -= (float)yoffset * 2.0f;
+    if (fovDeg < 20.0f) fovDeg = 20.0f;
+    if (fovDeg > 80.0f) fovDeg = 80.0f;
+}
+
+void framebuffer_size_callback(GLFWwindow* window, int width, int height){
+    if (height == 0) return;
+    winW = width;
+    winH = height;
+    glViewport(0, 0, width, height);
+}
 
 char* loadShaderSource(const char* filePath){
     FILE* file = fopen(filePath, "rb");
@@ -327,14 +371,18 @@ char* loadShaderSource(const char* filePath){
 unsigned int createShaderProgram(const char* vertexPath, const char* fragmentPath){
     char* vertexSource = loadShaderSource(vertexPath);
     char* fragmentSource = loadShaderSource(fragmentPath);
+
     unsigned int vs = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vs, 1, (const char * const*)&vertexSource, NULL);
     glCompileShader(vs);
+
     unsigned int fs = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(fs, 1, (const char * const*)&fragmentSource, NULL);
     glCompileShader(fs);
+
     unsigned int prog = glCreateProgram();
     glAttachShader(prog, vs); glAttachShader(prog, fs); glLinkProgram(prog);
+
     glDeleteShader(vs); glDeleteShader(fs);
     free(vertexSource); free(fragmentSource);
     return prog;
