@@ -1,3 +1,5 @@
+// 🔭 Passeio 3D pelo Sistema Solar v1.5 (Planetas + Anéis, sem trajetórias)
+
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <cglm/cglm.h>
@@ -33,15 +35,11 @@ void generateRing(float innerR, float outerR, int segments,
 char* loadShaderSource(const char* filePath);
 unsigned int createShaderProgram(const char* vertexPath, const char* fragmentPath);
 GLuint loadTexture2D(const char* path);
-void generateOrbitCircle(int segments, float** vertices, unsigned int* vertexCount);
-void draw_orbit_line(float radius, float orbitInclDeg,
-                     GLuint lineShader, GLuint orbitVAO, GLsizei orbitVertCount,
-                     const mat4 projection, const mat4 view, const vec3 color);
 
 // --- Estrutura para planetas ---
 typedef struct {
     const char* name;
-    float orbitRadius;     // distância ao "pai" (Sol)
+    float orbitRadius;     // distância ao Sol
     float orbitSpeedDeg;   // graus/seg (fictício para demo)
     float axialTiltDeg;    // inclinação do eixo (0 = desligado)
     float spinDeg;         // rotação diária (graus/s; use negativo p/ sentido oposto)
@@ -81,11 +79,11 @@ static void draw_planet(
 
     // ----- LOCAL (lift, tilt, spin, escala) -----
     mat4 local; glm_mat4_identity(local);
-    glm_rotate(local, glm_rad(+90.0f), (vec3){1.0f, 0.0f, 0.0f});        // lift
+    glm_rotate(local, glm_rad(+90.0f), (vec3){1.0f, 0.0f, 0.0f});            // lift
     if (p->axialTiltDeg != 0.0f)
         glm_rotate(local, glm_rad(p->axialTiltDeg), (vec3){0.0f, 0.0f, 1.0f}); // tilt opcional
     float spin = t * glm_rad(p->spinDeg);
-    glm_rotate(local, spin, (vec3){0.0f, 0.0f, 1.0f});                  // spin em Z
+    glm_rotate(local, spin, (vec3){0.0f, 0.0f, 1.0f});                      // spin em Z
     glm_scale(local, (vec3){p->scale, p->scale, p->scale});
 
     // ----- model = parent * orbit * local -----
@@ -113,7 +111,7 @@ int main(void)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    GLFWwindow* window = glfwCreateWindow(800, 600, "Passeio 3D pelo Sistema Solar v1.3 (Anéis + Órbitas)", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(800, 600, "Sistema Solar v1.5 (Sem Linhas de Órbita)", NULL, NULL);
     if (!window) { glfwTerminate(); return -1; }
     glfwMakeContextCurrent(window);
     
@@ -123,15 +121,14 @@ int main(void)
 
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) { return -1; }
     glEnable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND); // para alpha (anéis)
+    glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     // --- Shaders ---
     unsigned int objectShaderProgram = createShaderProgram("object_vertex.glsl", "object_fragment.glsl");
     unsigned int lightShaderProgram  = createShaderProgram("light_vertex.glsl",  "light_fragment.glsl");
-    unsigned int lineShaderProgram   = createShaderProgram("line_vertex.glsl",   "line_fragment.glsl");
 
-    // --- Esfera (Sol e planetas) ---
+    // --- Geometria (Esfera) ---
     float* sphereVerts; unsigned int sphereVCount;
     unsigned int* sphereIdx; unsigned int sphereICount;
     generateSphere(1.0f, 48, 24, &sphereVerts, &sphereVCount, &sphereIdx, &sphereICount);
@@ -155,7 +152,7 @@ int main(void)
     free(sphereVerts);
     free(sphereIdx);
 
-    // --- Anéis (malha: anel plano em XZ) ---
+    // --- Anel (para Saturno) ---
     float* ringVerts; unsigned int ringVCount;
     unsigned int* ringIdx; unsigned int ringICount;
     generateRing(1.0f, 2.0f, 128, &ringVerts, &ringVCount, &ringIdx, &ringICount);
@@ -179,20 +176,6 @@ int main(void)
     free(ringVerts);
     free(ringIdx);
 
-    // --- Círculo unitário para as ORBITAS (LINE_STRIP) ---
-    float* orbitVerts; unsigned int orbitVCount;
-    generateOrbitCircle(256, &orbitVerts, &orbitVCount);
-    GLuint orbitVAO, orbitVBO;
-    glGenVertexArrays(1, &orbitVAO);
-    glGenBuffers(1, &orbitVBO);
-    glBindVertexArray(orbitVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, orbitVBO);
-    glBufferData(GL_ARRAY_BUFFER, orbitVCount * 3 * sizeof(float), orbitVerts, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-    free(orbitVerts);
-    glLineWidth(1.5f); // espessura das linhas
-
     // --- Texturas ---
     stbi_set_flip_vertically_on_load(1);
     GLuint texSun    = loadTexture2D("sol.jpg");
@@ -204,7 +187,7 @@ int main(void)
     GLuint texSat    = loadTexture2D("saturno.jpg");
     GLuint texUra    = loadTexture2D("urano.jpg");
     GLuint texNep    = loadTexture2D("netuno.jpg");
-    GLuint texSatRings = loadTexture2D("saturno_aneis.png"); // com alpha
+    GLuint texSatRings = loadTexture2D("saturno_aneis.png");
 
     // --- Planetas (valores “de jogo”) ---
     Planet mercurio = {"Mercurio",  1.10f,  55.0f,  0.0f, 140.0f, 0.10f, texMerc,  7.0f};
@@ -215,16 +198,6 @@ int main(void)
     Planet saturno  = {"Saturno",   6.20f,   8.0f,  0.0f, 220.0f, 0.55f, texSat,   2.5f};
     Planet urano    = {"Urano",     7.40f,   6.0f,  0.0f,-150.0f, 0.45f, texUra,   0.8f};
     Planet netuno   = {"Netuno",    8.40f,   5.0f,  0.0f, 180.0f, 0.42f, texNep,   1.8f};
-
-    // Cores das órbitas (RGB 0..1)
-    vec3 corMerc   = {0.6f, 0.6f, 0.6f};
-    vec3 corVenus  = {0.9f, 0.8f, 0.4f};
-    vec3 corTerra  = {0.4f, 0.6f, 1.0f};
-    vec3 corMarte  = {1.0f, 0.3f, 0.3f};
-    vec3 corJup    = {0.9f, 0.7f, 0.5f};
-    vec3 corSat    = {0.9f, 0.9f, 0.6f};
-    vec3 corUra    = {0.6f, 1.0f, 1.0f};
-    vec3 corNep    = {0.5f, 0.6f, 1.0f};
 
     // --- LOOP ---
     while (!glfwWindowShouldClose(window))
@@ -245,17 +218,7 @@ int main(void)
 
         vec3 lightPos = {0.0f, 0.0f, 0.0f};
 
-        // --- ÓRBITAS (linhas) ---
-        draw_orbit_line(mercurio.orbitRadius, mercurio.orbitInclDeg, lineShaderProgram, orbitVAO, orbitVCount, projection, view, corMerc);
-        draw_orbit_line(venus.orbitRadius,    venus.orbitInclDeg,    lineShaderProgram, orbitVAO, orbitVCount, projection, view, corVenus);
-        draw_orbit_line(terra.orbitRadius,    terra.orbitInclDeg,    lineShaderProgram, orbitVAO, orbitVCount, projection, view, corTerra);
-        draw_orbit_line(marte.orbitRadius,    marte.orbitInclDeg,    lineShaderProgram, orbitVAO, orbitVCount, projection, view, corMarte);
-        draw_orbit_line(jupiter.orbitRadius,  jupiter.orbitInclDeg,  lineShaderProgram, orbitVAO, orbitVCount, projection, view, corJup);
-        draw_orbit_line(saturno.orbitRadius,  saturno.orbitInclDeg,  lineShaderProgram, orbitVAO, orbitVCount, projection, view, corSat);
-        draw_orbit_line(urano.orbitRadius,    urano.orbitInclDeg,    lineShaderProgram, orbitVAO, orbitVCount, projection, view, corUra);
-        draw_orbit_line(netuno.orbitRadius,   netuno.orbitInclDeg,   lineShaderProgram, orbitVAO, orbitVCount, projection, view, corNep);
-
-        // --- SOL (emissivo, indep. do sistema) ---
+        // --- SOL ---
         glUseProgram(lightShaderProgram);
         glUniformMatrix4fv(glGetUniformLocation(lightShaderProgram, "projection"), 1, GL_FALSE, (float*)projection);
         glUniformMatrix4fv(glGetUniformLocation(lightShaderProgram, "view"), 1, GL_FALSE, (float*)view);
@@ -263,18 +226,17 @@ int main(void)
         mat4 sunModel;
         glm_mat4_identity(sunModel);
         glm_translate(sunModel, lightPos);
-        glm_rotate(sunModel, glm_rad(-90.0f), (vec3){1.0f, 0.0f, 0.0f}); // ajuste se textura exigir
+        glm_rotate(sunModel, glm_rad(-90.0f), (vec3){1.0f, 0.0f, 0.0f}); // ajuste de textura se necessário
         glm_scale(sunModel, (vec3){0.7f, 0.7f, 0.7f});
         glUniformMatrix4fv(glGetUniformLocation(lightShaderProgram, "model"), 1, GL_FALSE, (float*)sunModel);
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texSun);
         glUniform1i(glGetUniformLocation(lightShaderProgram, "ourTexture"), 0);
-
         glBindVertexArray(sphereVAO);
         glDrawElements(GL_TRIANGLES, sphereICount, GL_UNSIGNED_INT, 0);
 
-        // --- PLANETAS (parent = identidade!) ---
+        // --- PLANETAS ---
         float t = (float)glfwGetTime();
         mat4 I; glm_mat4_identity(I);
 
@@ -284,35 +246,32 @@ int main(void)
         draw_planet(&marte,    I, objectShaderProgram, sphereVAO, sphereICount, t, projection, view, lightPos, cameraPos, NULL);
         draw_planet(&jupiter,  I, objectShaderProgram, sphereVAO, sphereICount, t, projection, view, lightPos, cameraPos, NULL);
 
-        // Saturno (captura o model para anexar anéis)
+        // Saturno (captura model para anexar anéis)
         mat4 saturnModel;
         draw_planet(&saturno,  I, objectShaderProgram, sphereVAO, sphereICount, t, projection, view, lightPos, cameraPos, saturnModel);
 
         // --- ANÉIS DE SATURNO ---
-        {
-            glUseProgram(objectShaderProgram);
-            glUniformMatrix4fv(glGetUniformLocation(objectShaderProgram, "projection"), 1, GL_FALSE, (float*)projection);
-            glUniformMatrix4fv(glGetUniformLocation(objectShaderProgram, "view"), 1, GL_FALSE, (float*)view);
-            glUniform3fv(glGetUniformLocation(objectShaderProgram, "lightPos"), 1, (float*)lightPos);
-            glUniform3fv(glGetUniformLocation(objectShaderProgram, "viewPos"), 1, (float*)cameraPos);
+        glUseProgram(objectShaderProgram);
+        glUniformMatrix4fv(glGetUniformLocation(objectShaderProgram, "projection"), 1, GL_FALSE, (float*)projection);
+        glUniformMatrix4fv(glGetUniformLocation(objectShaderProgram, "view"), 1, GL_FALSE, (float*)view);
+        glUniform3fv(glGetUniformLocation(objectShaderProgram, "lightPos"), 1, (float*)lightPos);
+        glUniform3fv(glGetUniformLocation(objectShaderProgram, "viewPos"), 1, (float*)cameraPos);
 
-            mat4 modelRings; 
-            glm_mat4_copy(saturnModel, modelRings);
-            // desfaz o lift do planeta para o anel ficar "horizontal"
-            glm_rotate(modelRings, glm_rad(-90.0f), (vec3){1.0f, 0.0f, 0.0f});
-            float ringScale = 0.55f * 2.8f; // ajuste visual relativo ao tamanho do globo
-            glm_scale(modelRings, (vec3){ringScale, ringScale, ringScale});
-            glUniformMatrix4fv(glGetUniformLocation(objectShaderProgram, "model"), 1, GL_FALSE, (float*)modelRings);
+        mat4 modelRings;
+        glm_mat4_copy(saturnModel, modelRings);
+        // desfaz o lift do planeta para o anel ficar no plano XZ do mundo
+        glm_rotate(modelRings, glm_rad(-90.0f), (vec3){1.0f, 0.0f, 0.0f});
+        float ringScale = 0.55f * 2.8f; // ajuste visual
+        glm_scale(modelRings, (vec3){ringScale, ringScale, ringScale});
+        glUniformMatrix4fv(glGetUniformLocation(objectShaderProgram, "model"), 1, GL_FALSE, (float*)modelRings);
 
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, texSatRings);
-            glUniform1i(glGetUniformLocation(objectShaderProgram, "ourTexture"), 0);
-
-            glDisable(GL_CULL_FACE); // ver anel dos dois lados
-            glBindVertexArray(ringVAO);
-            glDrawElements(GL_TRIANGLES, ringICount, GL_UNSIGNED_INT, 0);
-            glEnable(GL_CULL_FACE);
-        }
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texSatRings);
+        glUniform1i(glGetUniformLocation(objectShaderProgram, "ourTexture"), 0);
+        glDisable(GL_CULL_FACE); // ver anel por cima e por baixo
+        glBindVertexArray(ringVAO);
+        glDrawElements(GL_TRIANGLES, ringICount, GL_UNSIGNED_INT, 0);
+        glEnable(GL_CULL_FACE);
 
         draw_planet(&urano,    I, objectShaderProgram, sphereVAO, sphereICount, t, projection, view, lightPos, cameraPos, NULL);
         draw_planet(&netuno,   I, objectShaderProgram, sphereVAO, sphereICount, t, projection, view, lightPos, cameraPos, NULL);
@@ -321,33 +280,7 @@ int main(void)
         glfwPollEvents();
     }
 
-    // limpeza
-    glDeleteVertexArrays(1, &sphereVAO);
-    glDeleteBuffers(1, &sphereVBO);
-    glDeleteBuffers(1, &sphereEBO);
-
-    glDeleteVertexArrays(1, &ringVAO);
-    glDeleteBuffers(1, &ringVBO);
-    glDeleteBuffers(1, &ringEBO);
-
-    glDeleteVertexArrays(1, &orbitVAO);
-    glDeleteBuffers(1, &orbitVBO);
-
-    glDeleteProgram(objectShaderProgram);
-    glDeleteProgram(lightShaderProgram);
-    glDeleteProgram(lineShaderProgram);
-
-    glDeleteTextures(1, &texSun);
-    glDeleteTextures(1, &texMerc);
-    glDeleteTextures(1, &texVenus);
-    glDeleteTextures(1, &texEarth);
-    glDeleteTextures(1, &texMars);
-    glDeleteTextures(1, &texJup);
-    glDeleteTextures(1, &texSat);
-    glDeleteTextures(1, &texUra);
-    glDeleteTextures(1, &texNep);
-    glDeleteTextures(1, &texSatRings);
-
+    // --- Limpeza mínima (opcional: limpe buffers/VAOs/texturas se quiser) ---
     glfwTerminate();
     return 0;
 }
@@ -526,39 +459,4 @@ void generateRing(float innerR, float outerR, int segments,
         ringIndices[iid++] = inner_i; ringIndices[iid++] = inner_n; ringIndices[iid++] = outer_n;
     }
     *indices = ringIndices;
-}
-
-// Círculo unitário no plano XZ (y=0), para linhas de órbita (LINE_STRIP)
-void generateOrbitCircle(int segments, float** vertices, unsigned int* vertexCount){
-    if (segments < 16) segments = 16;
-    *vertexCount = (unsigned int)(segments + 1);
-    float* verts = (float*)malloc((*vertexCount) * 3 * sizeof(float));
-    int vi = 0;
-    for (int i = 0; i <= segments; ++i){
-        float a = (float)i / (float)segments * 2.0f * (float)M_PI;
-        verts[vi++] = cosf(a);  // x
-        verts[vi++] = 0.0f;     // y
-        verts[vi++] = sinf(a);  // z
-    }
-    *vertices = verts;
-}
-
-// Desenha linha de órbita escalada e inclinada
-void draw_orbit_line(float radius, float orbitInclDeg,
-                     GLuint lineShader, GLuint orbitVAO, GLsizei orbitVertCount,
-                     const mat4 projection, const mat4 view, const vec3 color){
-    glUseProgram(lineShader);
-
-    mat4 model; glm_mat4_identity(model);
-    if (orbitInclDeg != 0.0f)
-        glm_rotate(model, glm_rad(orbitInclDeg), (vec3){1.0f, 0.0f, 0.0f});
-    glm_scale(model, (vec3){radius, radius, radius});
-
-    glUniformMatrix4fv(glGetUniformLocation(lineShader, "projection"), 1, GL_FALSE, (float*)projection);
-    glUniformMatrix4fv(glGetUniformLocation(lineShader, "view"), 1, GL_FALSE, (float*)view);
-    glUniformMatrix4fv(glGetUniformLocation(lineShader, "model"), 1, GL_FALSE, (float*)model);
-    glUniform3f(glGetUniformLocation(lineShader, "color"), color[0], color[1], color[2]);
-
-    glBindVertexArray(orbitVAO);
-    glDrawArrays(GL_LINE_STRIP, 0, orbitVertCount);
 }
