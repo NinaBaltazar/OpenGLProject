@@ -15,8 +15,8 @@ vec3 cameraUp    = {0.0f, 1.0f,  0.0f};
 int firstMouse = 1;
 float yaw   = -90.0f;
 float pitch =  0.0f;
-float lastX =  800.0f / 2.0;
-float lastY =  600.0f / 2.0;
+float lastX =  800.0f / 2.0f;
+float lastY =  600.0f / 2.0f;
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
@@ -30,7 +30,6 @@ void generateSphere(float radius, int sectorCount, int stackCount,
 char* loadShaderSource(const char* filePath);
 unsigned int createShaderProgram(const char* vertexPath, const char* fragmentPath);
 
-
 int main(void)
 {
     // --- Inicialização ---
@@ -39,7 +38,8 @@ int main(void)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    GLFWwindow* window = glfwCreateWindow(800, 600, "Sistema Solar v0.6 - Órbita Corrigida!", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(800, 600, "Sistema Solar v0.8 - Eixos Fixos & Orbita Correta", NULL, NULL);
+    if (!window) { glfwTerminate(); return -1; }
     glfwMakeContextCurrent(window);
     
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
@@ -51,7 +51,7 @@ int main(void)
 
     // --- Compilando Shaders de arquivos ---
     unsigned int objectShaderProgram = createShaderProgram("object_vertex.glsl", "object_fragment.glsl");
-    unsigned int lightShaderProgram = createShaderProgram("light_vertex.glsl", "light_fragment.glsl");
+    unsigned int lightShaderProgram  = createShaderProgram("light_vertex.glsl",  "light_fragment.glsl");
 
     // --- Geração da esfera e buffers ---
     float* vertices;
@@ -141,6 +141,7 @@ int main(void)
         mat4 model;
         glm_mat4_identity(model);
         glm_translate(model, lightPos);
+        // Levantar polos se necessário para sua textura do Sol:
         glm_rotate(model, glm_rad(-90.0f), (vec3){1.0f, 0.0f, 0.0f});
         glm_scale(model, (vec3){0.5f, 0.5f, 0.5f});
         glUniformMatrix4fv(glGetUniformLocation(lightShaderProgram, "model"), 1, GL_FALSE, (float*)model);
@@ -160,21 +161,38 @@ int main(void)
         glUniform3fv(glGetUniformLocation(objectShaderProgram, "lightPos"), 1, (float*)lightPos);
         glUniform3fv(glGetUniformLocation(objectShaderProgram, "viewPos"), 1, (float*)cameraPos);
         
-        // --- CORREÇÃO DEFINITIVA DA TRANSLAÇÃO E ROTAÇÃO ---
-        glm_mat4_identity(model);
-        // 1. Translação Orbital: Move o "ponto de desenho" para a posição na órbita
-        float orbitalAngle = (float)glfwGetTime() * glm_rad(20.0f);
-        glm_translate(model, (vec3){cos(orbitalAngle) * 2.5f, 0.0f, sin(orbitalAngle) * 2.5f});
+        float t = (float)glfwGetTime();
 
-        // 2. Rotação de Correção: "Levanta" a esfera para que os polos fiquem no eixo Y
-        glm_rotate(model, glm_rad(-90.0f), (vec3){1.0f, 0.0f, 0.0f});
-        
-        // 3. Rotação Axial (Diária): Agora gira em torno do eixo Y do modelo, que está corrigido
-        float axialAngle = (float)glfwGetTime() * glm_rad(80.0f);
-        glm_rotate(model, axialAngle, (vec3){0.0f, 1.0f, 0.0f});
-        
-        // 4. Escala: Define o tamanho da Terra
-        glm_scale(model, (vec3){0.25f, 0.25f, 0.25f});
+        // -------- ORBITA (em torno da origem, no plano XZ) --------
+        mat4 orbit;
+        glm_mat4_identity(orbit);
+        float orbitalSpeed = glm_rad(20.0f); // deg/s -> rad/s
+        float orbitalAngle = t * orbitalSpeed;
+        vec3 orbitPos = { cosf(orbitalAngle) * 2.5f, 0.0f, sinf(orbitalAngle) * 2.5f };
+        glm_translate(orbit, orbitPos);
+        // Se quiser inclinar o plano orbital: glm_rotate(orbit, glm_rad(7.155f), (vec3){1,0,0});
+
+        // -------- ROTACOES LOCAIS (polos no eixo Y do mundo) --------
+        mat4 local;
+        glm_mat4_identity(local);
+
+        // 1) Lift: polos passam a alinhar com Y do mundo
+        glm_rotate(local, glm_rad(-90.0f), (vec3){1.0f, 0.0f, 0.0f});
+
+        // 2) Spin diário: após o lift, gire em Z (equivale a girar em Y do mundo)
+        float axialSpeed = glm_rad(80.0f);       // inverta o sinal se o sentido estiver invertido
+        float axialAngle = t * axialSpeed;
+        glm_rotate(local, axialAngle, (vec3){0.0f, 0.0f, 1.0f});
+
+        // (Opcional) Obliquidade: inserir entre o lift e o spin se desejar
+        // glm_rotate(local, glm_rad(23.44f), (vec3){0.0f, 0.0f, 1.0f});
+
+        // 3) Escala LOCAL (não altera o raio da órbita)
+        glm_scale(local, (vec3){0.25f, 0.25f, 0.25f});
+
+        // -------- COMBINA ORBITA E LOCAL --------
+        glm_mul(orbit, local, model); // model = orbit * local
+
         glUniformMatrix4fv(glGetUniformLocation(objectShaderProgram, "model"), 1, GL_FALSE, (float*)model);
         
         glActiveTexture(GL_TEXTURE0);
@@ -210,15 +228,18 @@ void processInput(GLFWwindow *window)
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
         glm_vec3_scale(cameraFront, cameraSpeed, velocity);
         glm_vec3_add(cameraPos, velocity, cameraPos);
-    } if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+    } 
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
         glm_vec3_scale(cameraFront, cameraSpeed, velocity);
         glm_vec3_sub(cameraPos, velocity, cameraPos);
-    } if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+    } 
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
         glm_vec3_cross(cameraFront, cameraUp, velocity);
         glm_vec3_normalize(velocity);
         glm_vec3_scale(velocity, cameraSpeed, velocity);
         glm_vec3_sub(cameraPos, velocity, cameraPos);
-    } if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+    } 
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
         glm_vec3_cross(cameraFront, cameraUp, velocity);
         glm_vec3_normalize(velocity);
         glm_vec3_scale(velocity, cameraSpeed, velocity);
@@ -245,13 +266,15 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos)
     if (pitch > 89.0f) pitch = 89.0f;
     if (pitch < -89.0f) pitch = -89.0f;
     vec3 front;
-    front[0] = cos(glm_rad(yaw)) * cos(glm_rad(pitch));
-    front[1] = sin(glm_rad(pitch));
-    front[2] = sin(glm_rad(yaw)) * cos(glm_rad(pitch));
+    front[0] = cosf(glm_rad(yaw)) * cosf(glm_rad(pitch));
+    front[1] = sinf(glm_rad(pitch));
+    front[2] = sinf(glm_rad(yaw)) * cosf(glm_rad(pitch));
     glm_normalize_to(front, cameraFront);
 }
 
-void framebuffer_size_callback(GLFWwindow* window, int width, int height) { glViewport(0, 0, width, height); }
+void framebuffer_size_callback(GLFWwindow* window, int width, int height) { 
+    glViewport(0, 0, width, height); 
+}
 
 char* loadShaderSource(const char* filePath) {
     FILE* file = fopen(filePath, "rb");
@@ -276,7 +299,7 @@ unsigned int createShaderProgram(const char* vertexPath, const char* fragmentPat
     unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertexShader, 1, (const char * const*)&vertexSource, NULL);
     glCompileShader(vertexShader);
-    
+
     unsigned int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(fragmentShader, 1, (const char * const*)&fragmentSource, NULL);
     glCompileShader(fragmentShader);
@@ -301,38 +324,53 @@ void generateSphere(float radius, int sectorCount, int stackCount,
     float* sphereVertices = (float*)malloc(*vertexCount * 8 * sizeof(float));
     float x, y, z, xy, nx, ny, nz, s, t;
     float lengthInv = 1.0f / radius;
-    float sectorStep = 2 * M_PI / sectorCount;
-    float stackStep = M_PI / stackCount;
+    float sectorStep = 2.0f * (float)M_PI / sectorCount;
+    float stackStep  = (float)M_PI / stackCount;
     float sectorAngle, stackAngle;
     int vertexIndex = 0;
-    for(int i = 0; i <= stackCount; ++i) {
-        stackAngle = M_PI / 2 - i * stackStep;
+    for (int i = 0; i <= stackCount; ++i) {
+        stackAngle = (float)M_PI / 2.0f - i * stackStep;
         xy = radius * cosf(stackAngle);
-        z = radius * sinf(stackAngle);
-        for(int j = 0; j <= sectorCount; ++j) {
+        z  = radius * sinf(stackAngle);
+        for (int j = 0; j <= sectorCount; ++j) {
             sectorAngle = j * sectorStep;
             x = xy * cosf(sectorAngle);
             y = xy * sinf(sectorAngle);
-            sphereVertices[vertexIndex++] = x; sphereVertices[vertexIndex++] = y; sphereVertices[vertexIndex++] = z;
+            // pos
+            sphereVertices[vertexIndex++] = x; 
+            sphereVertices[vertexIndex++] = y; 
+            sphereVertices[vertexIndex++] = z;
+            // normal
             nx = x * lengthInv; ny = y * lengthInv; nz = z * lengthInv;
-            sphereVertices[vertexIndex++] = nx; sphereVertices[vertexIndex++] = ny; sphereVertices[vertexIndex++] = nz;
-            s = (float)j / sectorCount; t = (float)i / stackCount;
-            sphereVertices[vertexIndex++] = s; sphereVertices[vertexIndex++] = t;
+            sphereVertices[vertexIndex++] = nx; 
+            sphereVertices[vertexIndex++] = ny; 
+            sphereVertices[vertexIndex++] = nz;
+            // uv
+            s = (float)j / sectorCount; 
+            t = (float)i / stackCount;
+            sphereVertices[vertexIndex++] = s; 
+            sphereVertices[vertexIndex++] = t;
         }
     }
     *vertices = sphereVertices;
+
     *indexCount = stackCount * sectorCount * 6;
     unsigned int* sphereIndices = (unsigned int*)malloc(*indexCount * sizeof(unsigned int));
     int index = 0;
     int k1, k2;
-    for(int i = 0; i < stackCount; ++i) {
+    for (int i = 0; i < stackCount; ++i) {
         k1 = i * (sectorCount + 1);
         k2 = k1 + sectorCount + 1;
-        for(int j = 0; j < sectorCount; ++j, ++k1, ++k2) {
-            if(i != 0) {
-                sphereIndices[index++] = k1; sphereIndices[index++] = k2; sphereIndices[index++] = k1 + 1;
-            } if(i != (stackCount-1)) {
-                sphereIndices[index++] = k1 + 1; sphereIndices[index++] = k2; sphereIndices[index++] = k2 + 1;
+        for (int j = 0; j < sectorCount; ++j, ++k1, ++k2) {
+            if (i != 0) {
+                sphereIndices[index++] = k1; 
+                sphereIndices[index++] = k2; 
+                sphereIndices[index++] = k1 + 1;
+            }
+            if (i != (stackCount - 1)) {
+                sphereIndices[index++] = k1 + 1; 
+                sphereIndices[index++] = k2; 
+                sphereIndices[index++] = k2 + 1;
             }
         }
     }
