@@ -120,7 +120,7 @@ int main(void)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    GLFWwindow* window = glfwCreateWindow(winW, winH, "Sistema Solar v1.6 (Zoom + Resize + Toggle Mouse)", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(winW, winH, "Sistema Solar v1.7 (Sky + Zoom + Resize + Toggle Mouse)", NULL, NULL);
     if (!window) { glfwTerminate(); return -1; }
     glfwMakeContextCurrent(window);
     
@@ -138,6 +138,7 @@ int main(void)
     // --- Shaders ---
     unsigned int objectShaderProgram = createShaderProgram("object_vertex.glsl", "object_fragment.glsl");
     unsigned int lightShaderProgram  = createShaderProgram("light_vertex.glsl",  "light_fragment.glsl");
+    unsigned int skyShaderProgram    = createShaderProgram("sky_vertex.glsl",    "sky_fragment.glsl");
 
     // --- Geometria (Esfera) ---
     float* sphereVerts; unsigned int sphereVCount;
@@ -189,16 +190,17 @@ int main(void)
 
     // --- Texturas ---
     stbi_set_flip_vertically_on_load(1);
-    GLuint texSun    = loadTexture2D("sol.jpg");
-    GLuint texMerc   = loadTexture2D("mercurio.jpg");
-    GLuint texVenus  = loadTexture2D("venus.jpg");
-    GLuint texEarth  = loadTexture2D("terra.jpg");
-    GLuint texMars   = loadTexture2D("marte.jpg");
-    GLuint texJup    = loadTexture2D("jupiter.jpg");
-    GLuint texSat    = loadTexture2D("saturno.jpg");
-    GLuint texUra    = loadTexture2D("urano.jpg");
-    GLuint texNep    = loadTexture2D("netuno.jpg");
-    GLuint texSatRings = loadTexture2D("saturno_aneis.png");
+    GLuint texSun     = loadTexture2D("sol.jpg");
+    GLuint texMerc    = loadTexture2D("mercurio.jpg");
+    GLuint texVenus   = loadTexture2D("venus.jpg");
+    GLuint texEarth   = loadTexture2D("terra.jpg");
+    GLuint texMars    = loadTexture2D("marte.jpg");
+    GLuint texJup     = loadTexture2D("jupiter.jpg");
+    GLuint texSat     = loadTexture2D("saturno.jpg");
+    GLuint texUra     = loadTexture2D("urano.jpg");
+    GLuint texNep     = loadTexture2D("netuno.jpg");
+    GLuint texSatRings= loadTexture2D("saturno_aneis.png");
+    GLuint texStars   = loadTexture2D("estrelas.jpg");  // <--- NOVO (céu)
 
     // --- Planetas (valores “de jogo”) ---
     Planet mercurio = {"Mercurio",  1.10f,  55.0f,  0.0f, 140.0f, 0.10f, texMerc,  7.0f};
@@ -226,6 +228,35 @@ int main(void)
         glm_perspective(glm_rad(fovDeg), (float)winW / (float)winH, 0.1f, 200.0f, projection);
         vec3 center; glm_vec3_add(cameraPos, cameraFront, center);
         glm_lookat(cameraPos, center, cameraUp, view);
+
+        // --- CÉU ESTRELADO (desenha primeiro) ---
+        glDepthMask(GL_FALSE);                       // não escrever no depth
+        glUseProgram(skyShaderProgram);
+        glUniformMatrix4fv(glGetUniformLocation(skyShaderProgram, "projection"), 1, GL_FALSE, (float*)projection);
+
+        // Remover a translação da view para o sky ficar "colado" na câmera
+        mat4 viewNoTrans; 
+        glm_mat4_copy(view, viewNoTrans);
+        viewNoTrans[3][0] = 0.0f; viewNoTrans[3][1] = 0.0f; viewNoTrans[3][2] = 0.0f;
+        glUniformMatrix4fv(glGetUniformLocation(skyShaderProgram, "view"), 1, GL_FALSE, (float*)viewNoTrans);
+
+        mat4 skyModel; 
+        glm_mat4_identity(skyModel);
+        glm_rotate(skyModel, glm_rad(-90.0f), (vec3){1.0f, 0.0f, 0.0f}); // se seu atlas pedir
+        glm_scale(skyModel, (vec3){100.0f, 100.0f, 100.0f});             // esfera gigante
+        glUniformMatrix4fv(glGetUniformLocation(skyShaderProgram, "model"), 1, GL_FALSE, (float*)skyModel);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texStars);
+        glUniform1i(glGetUniformLocation(skyShaderProgram, "skyTex"), 0);
+
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_FRONT); // desenha faces internas
+        glBindVertexArray(sphereVAO);
+        glDrawElements(GL_TRIANGLES, sphereICount, GL_UNSIGNED_INT, 0);
+        glCullFace(GL_BACK);
+        glDisable(GL_CULL_FACE);
+        glDepthMask(GL_TRUE);                        // volta a escrever no depth
 
         vec3 lightPos = {0.0f, 0.0f, 0.0f};
 
