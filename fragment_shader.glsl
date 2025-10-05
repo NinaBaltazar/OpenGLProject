@@ -1,9 +1,14 @@
 #version 330 core
 out vec4 FragColor;
 
-in vec3 ourColor;
+in vec2 TexCoord;
+
+// <-- NOVO: A textura que vamos receber do código C
+uniform sampler2D ourTexture;
 
 void main()
 {
-    FragColor = vec4(ourColor, 1.0);
+    // A função texture() busca a cor na imagem (ourTexture)
+    // usando a coordenada de textura (TexCoord)
+    FragColor = texture(ourTexture, TexCoord);
 }
