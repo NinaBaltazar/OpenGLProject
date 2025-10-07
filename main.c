@@ -136,9 +136,9 @@ int main(void)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     // --- Shaders ---
-    unsigned int objectShaderProgram = createShaderProgram("object_vertex.glsl", "object_fragment.glsl");
-    unsigned int lightShaderProgram  = createShaderProgram("light_vertex.glsl",  "light_fragment.glsl");
-    unsigned int skyShaderProgram    = createShaderProgram("sky_vertex.glsl",    "sky_fragment.glsl");
+    unsigned int objectShaderProgram = createShaderProgram("assets/shaders/object_vertex.glsl", "assets/shaders/object_fragment.glsl");
+    unsigned int lightShaderProgram  = createShaderProgram("assets/shaders/light_vertex.glsl",  "assets/shaders/light_fragment.glsl");
+    unsigned int skyShaderProgram    = createShaderProgram("assets/shaders/sky_vertex.glsl",    "assets/shaders/sky_fragment.glsl");
 
     // --- Geometria (Esfera) ---
     float* sphereVerts; unsigned int sphereVCount;
@@ -190,17 +190,17 @@ int main(void)
 
     // --- Texturas ---
     stbi_set_flip_vertically_on_load(1);
-    GLuint texSun     = loadTexture2D("sol.jpg");
-    GLuint texMerc    = loadTexture2D("mercurio.jpg");
-    GLuint texVenus   = loadTexture2D("venus.jpg");
-    GLuint texEarth   = loadTexture2D("terra.jpg");
-    GLuint texMars    = loadTexture2D("marte.jpg");
-    GLuint texJup     = loadTexture2D("jupiter.jpg");
-    GLuint texSat     = loadTexture2D("saturno.jpg");
-    GLuint texUra     = loadTexture2D("urano.jpg");
-    GLuint texNep     = loadTexture2D("netuno.jpg");
-    GLuint texSatRings= loadTexture2D("saturno_aneis.png");
-    GLuint texStars   = loadTexture2D("estrelas.jpg");  // <--- NOVO (céu)
+    GLuint texSun      = loadTexture2D("assets/textures/sol.jpg");
+    GLuint texMerc     = loadTexture2D("assets/textures/mercurio.jpg");
+    GLuint texVenus    = loadTexture2D("assets/textures/venus.jpg");
+    GLuint texEarth    = loadTexture2D("assets/textures/terra.jpg");
+    GLuint texMars     = loadTexture2D("assets/textures/marte.jpg");
+    GLuint texJup      = loadTexture2D("assets/textures/jupiter.jpg");
+    GLuint texSat      = loadTexture2D("assets/textures/saturno.jpg");
+    GLuint texUra      = loadTexture2D("assets/textures/urano.jpg");
+    GLuint texNep      = loadTexture2D("assets/textures/netuno.jpg");
+    GLuint texSatRings = loadTexture2D("assets/textures/saturno_aneis.png");
+    GLuint texStars    = loadTexture2D("assets/textures/estrelas.jpg");
 
     // --- Planetas (valores “de jogo”) ---
     Planet mercurio = {"Mercurio",  1.10f,  55.0f,  0.0f, 140.0f, 0.10f, texMerc,  7.0f};
